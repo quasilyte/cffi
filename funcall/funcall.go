@@ -5,6 +5,14 @@ import (
 )
 
 type (
+	// Func is a wrapped C function which can be
+	// called with Go types directly.
+	Func func(...interface{}) interface{}
+	// FuncInt is like "Func", but return type differs.
+	FuncInt func(...interface{}) int
+	// FuncString is like "Func", but return type differs.
+	FuncString func(...interface{}) string
+
 	// User-defined function that converts Go value to C value.
 	go2CFunc func(interface{}) interface{}
 	// User-defined function that converts C value to Go value.
@@ -28,12 +36,15 @@ func NewInvoker(go2c go2CFunc, c2go c2GoFunc) *Invoker {
 	}
 }
 
+func (inv *Invoker) apply(fn reflect.Value, args []interface{}) interface{} {
+	xs := inv.mapArgs(args)
+	return inv.c2go(fn.Call(xs)[0].Interface())
+}
+
 // Apply is like "Call", but accepts a slice of arguments instead of being
 // variadic over interface{}.
 func (inv *Invoker) Apply(callable interface{}, args []interface{}) interface{} {
-	xs := inv.mapArgs(args)
-	fn := reflect.ValueOf(callable)
-	return inv.c2go(fn.Call(xs)[0].Interface())
+	return inv.apply(reflect.ValueOf(callable), args)
 }
 
 // Call invokes "callable" argument with provided "args".
@@ -72,4 +83,30 @@ func (inv *Invoker) mapArgs(args []interface{}) []reflect.Value {
 		}
 	}
 	return xs
+}
+
+// Wrap returns a closure that can be called later.
+// Uses provided invoker to perform function calling
+// and arguments conversion.
+func Wrap(inv *Invoker, callable interface{}) Func {
+	fn := reflect.ValueOf(callable)
+	return func(args ...interface{}) interface{} {
+		return inv.apply(fn, args)
+	}
+}
+
+// WrapInt is like "Wrap", but does result type assertion to int.
+func WrapInt(inv *Invoker, callable interface{}) FuncInt {
+	fn := reflect.ValueOf(callable)
+	return func(args ...interface{}) int {
+		return inv.apply(fn, args).(int)
+	}
+}
+
+// WrapString is like "Wrap", but does result type assertion to string.
+func WrapString(inv *Invoker, callable interface{}) FuncString {
+	fn := reflect.ValueOf(callable)
+	return func(args ...interface{}) string {
+		return inv.apply(fn, args).(string)
+	}
 }
